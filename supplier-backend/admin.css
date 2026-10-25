@@ -8,3 +8,6 @@
 .pager button{padding:9px 12px}
 .pager button:disabled{cursor:not-allowed;opacity:.45}
 @media(max-width:560px){.pager{flex-direction:column;align-items:stretch}.pager div button{flex:1}}
+
+.supplier-picker{display:flex;flex-direction:column;gap:8px;font-weight:650;margin:15px 0 20px;color:#475a80}
+.supplier-picker select{width:100%;max-width:550px;background:#f8fbff;padding:13px;border:1px solid #c7d6ed;border-radius:12px;color:#273b5d;font:inherit}

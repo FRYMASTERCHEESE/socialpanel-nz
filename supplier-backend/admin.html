@@ -14,11 +14,17 @@
   <main>
     <section class="intro">
       <span class="eyebrow">OWNER ACCESS</span>
-      <h1>SMMFollows supplier prices</h1>
+      <h1>Compare supplier prices</h1>
       <p>Securely inspect supplier services and balance before deciding which services to offer. Nothing here takes customer payments or places orders.</p>
     </section>
     <section class="panel" aria-labelledby="access-title">
       <h2 id="access-title">Your private access token</h2>
+      <label class="supplier-picker" for="provider">Choose supplier
+        <select id="provider">
+          <option value="smmfollows">SMMFollows (existing)</option>
+          <option value="smmlite">SMMLite (requires rotated key)</option>
+        </select>
+      </label>
       <p>Enter the <code>SOCIALPANEL_OWNER_TOKEN</code> you set in your Render environment settings. This token stays in this page only and is never saved in browser storage.</p>
       <div class="row"><label for="token" class="sr-only">Owner access token</label><input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Enter your private owner token" minlength="24"><button id="toggle-token" type="button" class="plain">Show</button></div>
       <div class="actions"><button id="services" type="button" class="primary">Check supplier services</button><button id="balance" type="button" class="secondary">Check supplier balance</button><button id="clear" type="button" class="plain">Clear</button></div>
@@ -45,7 +51,7 @@
       </div>
       <div id="balance-result" class="balance" hidden></div>
     </section>
-    <footer>Supplier currency is unverified until checked with SMMFollows. Rates shown are supplier quotes, not retail NZD prices. Check platform rules before offering any service.</footer>
+    <footer>Supplier currency is unverified until each supplier reports its currency. Rates shown are supplier quotes, not retail NZD prices. Check platform rules before offering any service.</footer>
   </main>
 </body>
 </html>

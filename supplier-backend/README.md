@@ -46,3 +46,14 @@ Tests use synthetic upstream responses and do not call SMMFollows or place order
 ## Catalogue inspection (owner-only)
 
 The owner viewer fetches up to 5,000 valid unique SMMFollows services at a time, filters the loaded list, and paginates in groups of 75 to keep mobile devices responsive. Use **Cheapest first** to compare supplier rates per 1,000 **within the supplier's unverified currency**. Diagnostic counts distinguish duplicate IDs, invalid rates, invalid quantities and malformed entries. No rejected supplier data or credentials are displayed. The browser does not persist the supplier catalogue or owner token. If the provider returns over 5,000 valid services, the viewer marks the list truncated; this limit is intentional, not a supplier guarantee.
+
+## SMMLite supplier (read-only, requires a NEW private key)
+
+SMMLite advertises API access, but its exact authenticated API endpoint has not yet been independently confirmed. The backend uses the common SMM-panel v2 path `https://smmlite.com/api/v2` as a provisional fixed server-side URL. Check the official logged-in API documentation before relying on results.
+
+1. **Revoke/regenerate the SMMLite key previously pasted into chat**. Do not reuse or resend that key.
+2. On the existing Render service named `socialpanel-nz-supplier`, open **Environment** and add `SMMLITE_API_KEY` with the NEW key as a private value. Preserve `SMMFOLLOWS_API_KEY` and `SOCIALPANEL_OWNER_TOKEN`. Never place supplier keys in the public website, in commits, or in chat.
+3. Save and deploy. At `/admin`, enter your existing owner token, select SMMLite, and check the supplier balance and service list. Missing SMMLite credentials cause only SMMLite to fail closed; SMMFollows remains connected.
+4. Confirm live API endpoint, currency, minimum quantities, quality and service terms before making any pricing decisions. Website sales and automated orders remain disabled.
+
+The backend supports exactly two suppliers and only `services`/`balance` actions. There is no supplier `add`, refills, cancellations, customer payments, public wholesale disclosure or order fulfilment action. SMM-panel catalogue rates for different services must not be assumed equivalent.

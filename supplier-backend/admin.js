@@ -3,6 +3,8 @@
 const el = (id) => document.getElementById(id);
 const input = el('token');
 const message = el('message');
+const provider = el('provider');
+const supplierLabel = () => provider.value === 'smmlite' ? 'SMMLite' : 'SMMFollows';
 let services = [];
 let currentPage = 0;
 const pageSize = 75;
@@ -42,6 +44,7 @@ function renderRows() {
   el('prev-page').disabled = currentPage === 0;
   el('next-page').disabled = currentPage >= pages - 1;
 }
+provider.addEventListener('change', () => { services = []; currentPage = 0; clearRows(); el('results').hidden = true; status(`${supplierLabel()} selected. Nothing will be ordered.`); });
 el('filter').addEventListener('input', () => { currentPage = 0; renderRows(); });
 el('sort-services').addEventListener('change', () => { currentPage = 0; renderRows(); });
 el('prev-page').addEventListener('click', () => { currentPage--; renderRows(); });
@@ -57,27 +60,28 @@ el('clear').addEventListener('click', () => {
 async function check(action) {
   if (input.value.trim().length < 24) { status('Enter the owner token you set in Render (at least 24 characters).', 'error'); input.focus(); return; }
   const clicked = el(action); clicked.disabled = true;
-  el('services').disabled = true; el('balance').disabled = true;
-  status('Checking supplier ' + action + ' securely…');
+  el('services').disabled = true; el('balance').disabled = true; provider.disabled = true;
+  const selectedProvider = provider.value;
+  status(`Checking ${supplierLabel()} ${action} securely…`);
   try {
     const response = await fetch('/api/preview', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + input.value.trim() },
-      body: JSON.stringify({ action }), cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer',
+      body: JSON.stringify({ action, provider: selectedProvider }), cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer',
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Connection was unsuccessful');
-    if (data.readOnly !== true || data.provider !== 'SMMFollows') throw new Error('Unexpected response');
+    if (data.readOnly !== true || data.provider !== (selectedProvider === 'smmlite' ? 'SMMLite' : 'SMMFollows')) throw new Error('Unexpected response');
     clearRows(); el('results').hidden = false;
     if (action === 'services') {
       services = Array.isArray(data.services) ? data.services : [];
-      el('result-heading').textContent = `Supplier services (${services.length.toLocaleString()} loaded)`;
+      el('result-heading').textContent = `${data.provider} services (${services.length.toLocaleString()} loaded)`;
       const counts = data.rejectedReasons || {};
       const reasons = [
         ['duplicateId','duplicate IDs'],['invalidQuantityRange','invalid quantity limits'],
         ['invalidRate','invalid rates'],['invalidId','invalid IDs'],
         ['missingName','missing names'],['invalidRecord','other invalid records']
       ].filter(([key]) => Number(counts[key]) > 0).map(([key,label]) => `${counts[key]} ${label}`).join(', ');
-      el('result-note').textContent = `Supplier rates per 1,000 in UNVERIFIED currency — private quotes, not customer prices. ` +
+      el('result-note').textContent = `${data.provider} rates per 1,000 in UNVERIFIED currency — private quotes, not customer prices. ` +
         `${data.valid} valid unique services in ${data.listed} supplier rows. ` +
         (data.truncated ? `Only the first ${services.length} valid entries were loaded. ` : '') +
         (data.rejected ? `${data.rejected} rows excluded${reasons ? ' ('+reasons+')' : ''}. ` : '') +
@@ -88,14 +92,14 @@ async function check(action) {
       status('Retrieved a read-only supplier list. Nothing was ordered, charged, or published.', 'success');
     } else {
       services = [];
-      el('result-heading').textContent = 'Supplier account balance';
+      el('result-heading').textContent = `${data.provider} account balance`;
       el('result-note').textContent = 'Balance and currency are reported by the supplier. This is not SocialPanel NZ customer funds.';
       const balance = el('balance-result'); balance.textContent = String(data.balance) + ' ' + String(data.currency);
       balance.hidden = false;
       status('Retrieved supplier balance without any charge or order.', 'success');
     }
   } catch (e) { status(e instanceof Error ? e.message : 'The supplier check failed.', 'error'); }
-  finally { clicked.disabled = false; el('services').disabled = false; el('balance').disabled = false; }
+  finally { clicked.disabled = false; el('services').disabled = false; el('balance').disabled = false; provider.disabled = false; }
 }
 el('services').addEventListener('click', () => check('services'));
 el('balance').addEventListener('click', () => check('balance'));

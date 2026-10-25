@@ -1,5 +1,5 @@
 /**
- * SocialPanel NZ — isolated, read-only SMMFollows supplier viewer.
+ * SocialPanel NZ — isolated, read-only multi-supplier viewer.
  * No credentials are stored in GitHub, logs, URLs, or browser storage.
  * No supplier order, refill, cancel or payment endpoint exists here.
  * This is a preview tool and NOT customer-facing order fulfilment.
@@ -11,7 +11,11 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { normalizeSupplierList, normalizeSupplierBalance } from '../supabase/functions/smmfollows-preview/normalize.mjs';
 
-const UPSTREAM = 'https://smmfollows.com/api/v2';
+// Fixed server-side endpoints only. SMMLite's path is provisional until authenticated docs confirm it.
+const SUPPLIERS = Object.freeze({
+  smmfollows: Object.freeze({name:'SMMFollows',endpoint:'https://smmfollows.com/api/v2',keyName:'SMMFOLLOWS_API_KEY'}),
+  smmlite: Object.freeze({name:'SMMLite',endpoint:'https://smmlite.com/api/v2',keyName:'SMMLITE_API_KEY'}),
+});
 const MAX_BODY_BYTES = 1024;
 // Some SMM panels return thousands of records; a 2MB cap rejects valid catalogues.
 // Keep a strict upper bound for memory safety, but allow a full multi-thousand-row list.
@@ -61,20 +65,20 @@ async function readLimitedBody(req) {
 class SupplierPreviewError extends Error {
   constructor(code, message) { super(message); this.code = code; }
 }
-async function readSupplierJson(response) {
+async function readSupplierJson(response, providerName) {
   // Expose only the upstream HTTP status, never its response body or credentials.
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) throw new SupplierPreviewError(
-      'SUPPLIER_ACCESS_DENIED', `SMMFollows refused the API request (HTTP ${response.status}). Check the supplier API key, permissions or supplier-side IP blocking.`);
+      'SUPPLIER_ACCESS_DENIED', `${providerName} refused the API request (HTTP ${response.status}). Check the supplier API key, permissions or supplier-side IP blocking.`);
     if (response.status === 429) throw new SupplierPreviewError(
-      'SUPPLIER_RATE_LIMIT', 'SMMFollows is rate-limiting API requests. Try again later.');
+      'SUPPLIER_RATE_LIMIT', `${providerName} is rate-limiting API requests. Try again later.`);
     throw new SupplierPreviewError('SUPPLIER_HTTP_ERROR',
-      `SMMFollows API returned HTTP ${Number(response.status) || 'error'}. Check with their support if it continues.`);
+      `${providerName} API returned HTTP ${Number(response.status) || 'error'}. Check with their support if it continues.`);
   }
   if (Number(response.headers.get('content-length') || 0) > MAX_UPSTREAM_BYTES) {
-    throw new SupplierPreviewError('SUPPLIER_TOO_LARGE', 'SMMFollows catalogue exceeds the 12 MB safe response limit.');
+    throw new SupplierPreviewError('SUPPLIER_TOO_LARGE', `${providerName} catalogue exceeds the 12 MB safe response limit.`);
   }
-  if (!response.body) throw new SupplierPreviewError('SUPPLIER_EMPTY', 'SMMFollows returned an empty response.');
+  if (!response.body) throw new SupplierPreviewError('SUPPLIER_EMPTY', `${providerName} returned an empty response.`);
   const reader = response.body.getReader();
   const chunks = [];
   let size = 0;
@@ -91,23 +95,23 @@ async function readSupplierJson(response) {
   let result;
   try { result = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
   catch { throw new SupplierPreviewError(
-    'SUPPLIER_NOT_JSON', 'SMMFollows returned something other than JSON, possibly a login or security-check page.'); }
+    'SUPPLIER_NOT_JSON', `${providerName} returned something other than JSON, possibly a login or security-check page.`); }
   if (result && !Array.isArray(result) && typeof result === 'object' && result.error) {
     throw new SupplierPreviewError('SUPPLIER_REJECTED',
-      'SMMFollows rejected the API request. Check your private supplier key and account API permissions.');
+      `${providerName} rejected the API request. Check your private supplier key and account API permissions.`);
   }
   return result;
 }
-function safeSupplierFailure(error) {
+function safeSupplierFailure(error, providerName) {
   if (error instanceof SupplierPreviewError) return {code:error.code,error:error.message};
   if (error && (error.name === 'TimeoutError' || error.name === 'AbortError')) return {
-    code:'SUPPLIER_TIMEOUT', error:'SMMFollows did not respond within 15 seconds. Try again later.'
+    code:'SUPPLIER_TIMEOUT', error:`${providerName} did not respond within 15 seconds. Try again later.`
   };
   if (error instanceof TypeError) return {
-    code:'SUPPLIER_NETWORK', error:'The Render server could not reach SMMFollows. Check supplier availability or API access.'
+    code:'SUPPLIER_NETWORK', error:`The Render server could not reach ${providerName}. Check supplier availability or API access.`
   };
   // Unrecognized payloads or parsing errors are never forwarded or logged verbatim.
-  return {code:'SUPPLIER_FORMAT',error:'SMMFollows responded, but its service or balance data could not be processed. Contact support if this continues.'};
+  return {code:'SUPPLIER_FORMAT',error:`${providerName} responded, but its service or balance data could not be processed. Contact support if this continues.`};
 }
 
 export function createHandler({ env = process.env, supplierFetch = globalThis.fetch } = {}) {
@@ -143,8 +147,7 @@ export function createHandler({ env = process.env, supplierFetch = globalThis.fe
     }
     if (req.method !== 'POST' || path !== '/api/preview') return json(res, 404, { error: 'Not found' });
     const owner = String(env.SOCIALPANEL_OWNER_TOKEN || '').trim();
-    const apiKey = String(env.SMMFOLLOWS_API_KEY || '').trim();
-    if (owner.length < ACCESS_TOKEN_MIN_LENGTH || owner.length > 512 || !apiKey) return json(res, 503, { error: 'Private environment setup incomplete — set both secrets in Render' });
+    if (owner.length < ACCESS_TOKEN_MIN_LENGTH || owner.length > 512) return json(res, 503, { error: 'Private environment setup incomplete — set the owner token in Render' });
     if (!hasOwnerToken(req, owner)) return json(res, 401, { error: 'Owner access token required' });
     // Short per-IP throttle limits both accidental rapid polling and automated guessing.
     const ip = req.socket.remoteAddress || 'unknown';
@@ -157,6 +160,7 @@ export function createHandler({ env = process.env, supplierFetch = globalThis.fe
     if (entry.count > 15) return json(res, 429, { error: 'Too many requests; retry later' });
     if (!String(req.headers['content-type'] || '').toLowerCase().startsWith('application/json')) return json(res, 415, { error: 'JSON required' });
     if (Number(req.headers['content-length'] || 0) > MAX_BODY_BYTES) return json(res, 413, { error: 'Request too large' });
+    let activeSupplierName = 'SMMFollows';
     try {
       req.setTimeout(BODY_TIMEOUT_MS, () => req.destroy());
       let payload;
@@ -164,20 +168,26 @@ export function createHandler({ env = process.env, supplierFetch = globalThis.fe
       catch (e) { return json(res, String(e.message).includes('too large') ? 413 : 400, { error: 'Invalid request body' }); }
       const action = payload && !Array.isArray(payload) && typeof payload === 'object' ? payload.action : null;
       if (action !== 'services' && action !== 'balance') return json(res, 400, { error: 'Only read-only services and balance checks are available' });
-      const upstream = await supplierFetch(UPSTREAM, {
+      const providerId = payload.provider === undefined ? 'smmfollows' : payload.provider;
+      if (typeof providerId !== 'string' || !Object.hasOwn(SUPPLIERS, providerId)) return json(res, 400, { error: 'Unknown supplier' });
+      const supplier = SUPPLIERS[providerId];
+      activeSupplierName = supplier.name;
+      const apiKey = String(env[supplier.keyName] || '').trim();
+      if (!apiKey) return json(res, 503, { error: `${supplier.name} key not configured in private Render settings` });
+      const upstream = await supplierFetch(supplier.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
         body: new URLSearchParams({ key: apiKey, action }).toString(),
         redirect: 'error',
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
-      const data = await readSupplierJson(upstream);
+      const data = await readSupplierJson(upstream, supplier.name);
       const safe = action === 'services' ? normalizeSupplierList(data, 5000) : normalizeSupplierBalance(data);
-      return json(res, 200, { provider: 'SMMFollows', readOnly: true, ...safe });
+      return json(res, 200, { provider: supplier.name, readOnly: true, ...safe });
     } catch (error) {
       // Never reveal upstream bodies, stack traces, supplier keys or owner tokens.
       // These safe reason codes distinguish catalogue size, supplier denial and networking.
-      return json(res, 502, safeSupplierFailure(error));
+      return json(res, 502, safeSupplierFailure(error, activeSupplierName));
     }
   };
 }
