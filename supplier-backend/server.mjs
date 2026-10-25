@@ -1,0 +1,164 @@
+/**
+ * SocialPanel NZ — isolated, read-only SMMFollows supplier viewer.
+ * No credentials are stored in GitHub, logs, URLs, or browser storage.
+ * No supplier order, refill, cancel or payment endpoint exists here.
+ * This is a preview tool and NOT customer-facing order fulfilment.
+ */
+import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+import { normalizeSupplierList, normalizeSupplierBalance } from '../supabase/functions/smmfollows-preview/normalize.mjs';
+
+const UPSTREAM = 'https://smmfollows.com/api/v2';
+const MAX_BODY_BYTES = 1024;
+const MAX_UPSTREAM_BYTES = 2_000_000;
+const BODY_TIMEOUT_MS = 10_000;
+const FETCH_TIMEOUT_MS = 15_000;
+const ACCESS_TOKEN_MIN_LENGTH = 24;
+const files = new Map([
+  ['/admin', ['admin.html', 'text/html; charset=utf-8']],
+  ['/admin/app.js', ['admin.js', 'text/javascript; charset=utf-8']],
+  ['/admin/style.css', ['admin.css', 'text/css; charset=utf-8']],
+]);
+
+function secureHeaders(res, contentType = 'application/json; charset=utf-8') {
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'");
+}
+function json(res, status, body) {
+  secureHeaders(res);
+  res.writeHead(status);
+  res.end(JSON.stringify(body));
+}
+function sha256(value) { return createHash('sha256').update(value, 'utf8').digest(); }
+function hasOwnerToken(request, configured) {
+  const incoming = request.headers.authorization;
+  if (typeof incoming !== 'string' || !incoming.startsWith('Bearer ')) return false;
+  const provided = incoming.slice(7);
+  if (provided.length < ACCESS_TOKEN_MIN_LENGTH || provided.length > 512 || /[\r\n]/.test(provided)) return false;
+  return timingSafeEqual(sha256(provided), sha256(configured));
+}
+async function readLimitedBody(req) {
+  let size = 0;
+  const chunks = [];
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > MAX_BODY_BYTES) throw new Error('Request too large');
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+async function readSupplierJson(response) {
+  if (!response.ok) throw new Error('Supplier currently unavailable');
+  if (Number(response.headers.get('content-length') || 0) > MAX_UPSTREAM_BYTES) throw new Error('Supplier response too large');
+  if (!response.body) throw new Error('Supplier returned an empty response');
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_UPSTREAM_BYTES) throw new Error('Supplier response too large');
+      chunks.push(Buffer.from(value));
+    }
+  } finally { await reader.cancel().catch(() => {}); }
+  let result;
+  try { result = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+  catch { throw new Error('Supplier returned invalid JSON'); }
+  if (result && !Array.isArray(result) && typeof result === 'object' && result.error) throw new Error('Supplier rejected the request; check your key or account settings');
+  return result;
+}
+
+export function createHandler({ env = process.env, supplierFetch = globalThis.fetch } = {}) {
+  const recent = new Map();
+  return async function handler(req, res) {
+    // Deliberately no CORS support: the owner viewer is served on this same origin.
+    const origin = req.headers.origin;
+    if (origin && origin !== 'https://' + req.headers.host && origin !== 'http://localhost:' + (env.PORT || 10000) && origin !== 'http://127.0.0.1:' + (env.PORT || 10000)) {
+      return json(res, 403, { error: 'Cross-origin request rejected' });
+    }
+    const path = new URL(req.url || '/', 'http://localhost').pathname;
+    if (req.method === 'GET' && path === '/healthz') {
+      return json(res, 200, { status: 'ok', product: 'SocialPanel NZ supplier preview', readOnly: true, ordersEnabled: false });
+    }
+    if (req.method === 'GET' && path === '/') {
+      secureHeaders(res);
+      res.writeHead(302, { Location: '/admin' });
+      return res.end();
+    }
+    if (req.method === 'GET' && path === '/robots.txt') {
+      secureHeaders(res, 'text/plain; charset=utf-8');
+      res.writeHead(200);
+      return res.end('User-agent: *\nDisallow: /\n');
+    }
+    if (req.method === 'GET' && files.has(path)) {
+      const [file, type] = files.get(path);
+      try {
+        const content = await readFile(new URL('./' + file, import.meta.url));
+        secureHeaders(res, type);
+        res.writeHead(200);
+        return res.end(content);
+      } catch { return json(res, 503, { error: 'Viewer assets unavailable' }); }
+    }
+    if (req.method !== 'POST' || path !== '/api/preview') return json(res, 404, { error: 'Not found' });
+    const owner = String(env.SOCIALPANEL_OWNER_TOKEN || '').trim();
+    const apiKey = String(env.SMMFOLLOWS_API_KEY || '').trim();
+    if (owner.length < ACCESS_TOKEN_MIN_LENGTH || owner.length > 512 || !apiKey) return json(res, 503, { error: 'Private environment setup incomplete — set both secrets in Render' });
+    if (!hasOwnerToken(req, owner)) return json(res, 401, { error: 'Owner access token required' });
+    // Short per-IP throttle limits both accidental rapid polling and automated guessing.
+    const ip = req.socket.remoteAddress || 'unknown';
+    const now = Date.now();
+    if (recent.size > 1000) recent.clear();
+    const entry = recent.get(ip) || { from: now, count: 0 };
+    if (now - entry.from > 60_000) { entry.from = now; entry.count = 0; }
+    entry.count++;
+    recent.set(ip, entry);
+    if (entry.count > 15) return json(res, 429, { error: 'Too many requests; retry later' });
+    if (!String(req.headers['content-type'] || '').toLowerCase().startsWith('application/json')) return json(res, 415, { error: 'JSON required' });
+    if (Number(req.headers['content-length'] || 0) > MAX_BODY_BYTES) return json(res, 413, { error: 'Request too large' });
+    try {
+      req.setTimeout(BODY_TIMEOUT_MS, () => req.destroy());
+      let payload;
+      try { payload = JSON.parse(await readLimitedBody(req)); }
+      catch (e) { return json(res, String(e.message).includes('too large') ? 413 : 400, { error: 'Invalid request body' }); }
+      const action = payload && !Array.isArray(payload) && typeof payload === 'object' ? payload.action : null;
+      if (action !== 'services' && action !== 'balance') return json(res, 400, { error: 'Only read-only services and balance checks are available' });
+      const upstream = await supplierFetch(UPSTREAM, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
+        body: new URLSearchParams({ key: apiKey, action }).toString(),
+        redirect: 'error',
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+      const data = await readSupplierJson(upstream);
+      const safe = action === 'services' ? normalizeSupplierList(data, 300) : normalizeSupplierBalance(data);
+      return json(res, 200, { provider: 'SMMFollows', readOnly: true, ...safe });
+    } catch {
+      // Never reveal upstream responses, stack traces, supplier keys, or owner tokens.
+      return json(res, 502, { error: 'Supplier check failed — verify your private key and try again' });
+    }
+  };
+}
+
+export function startServer({ env = process.env } = {}) {
+  const port = Number(env.PORT || 10000);
+  const server = createServer(createHandler({ env }));
+  server.requestTimeout = 20_000;
+  server.headersTimeout = 15_000;
+  server.listen(port, '0.0.0.0', () => {
+    console.log('SocialPanel NZ supplier preview listening on port ' + port + ' (read-only)');
+  });
+  return server;
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) startServer();

@@ -1,0 +1,133 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
+import { createHandler } from '../server.mjs';
+
+const token = 'only-for-tests-an-owner-token-1234567890';
+const key = 'test-provider-secret-do-not-use';
+const env = { SOCIALPANEL_OWNER_TOKEN: token, SMMFOLLOWS_API_KEY: key };
+const data = [
+  { service: 123, name: 'Video Views', type: 'Default', category: 'Example / Video', rate: '0.09', min: '100', max: '10000', refill: true, cancel: false },
+  { service: 123, name: 'Duplicate', category: 'Example', rate: '0.20', min: '100', max: '10000' },
+  { service: 124, name: 'Likes', type: 'Default', category: 'Example / Likes', rate: '1.23', min: '50', max: '5000', refill: false, cancel: true },
+];
+
+async function withServer(callback, options = {}) {
+  const server = createServer(createHandler({ env: options.env ?? env, supplierFetch: options.supplierFetch ?? (async () => Response.json(data)) }));
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try { await callback(base); }
+  finally { await new Promise((resolve, reject) => server.close(e => e ? reject(e) : resolve())); }
+}
+const post = (base, action, access = token, headers = {}) => fetch(base + '/api/preview', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', 'authorization': 'Bearer ' + access, ...headers },
+  body: JSON.stringify({ action }),
+});
+
+test('health is public and explicitly read-only', async () => {
+  await withServer(async base => {
+    const response = await fetch(base + '/healthz');
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { status: 'ok', product: 'SocialPanel NZ supplier preview', readOnly: true, ordersEnabled: false });
+    assert.equal(response.headers.get('cache-control'), 'no-store, max-age=0');
+  });
+});
+test('static private viewer serves protected HTML and no external scripts', async () => {
+  await withServer(async base => {
+    const response = await fetch(base + '/admin');
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    assert.match(html, /Private supplier console/);
+    assert.match(response.headers.get('content-security-policy'), /default-src 'none'/);
+    assert.doesNotMatch(html, /localStorage|https:\/\/cdn/i);
+    assert.equal((await fetch(base + '/admin/app.js')).status, 200);
+  });
+});
+test('unauthenticated request rejected without supplier call', async () => {
+  let calls = 0;
+  await withServer(async base => {
+    const r = await post(base, 'services', 'wrong-owner-token-that-is-long-enough');
+    assert.equal(r.status, 401);
+  }, { supplierFetch: async () => { calls++; return Response.json(data); } });
+  assert.equal(calls, 0);
+});
+test('missing secrets fail closed', async () => {
+  await withServer(async base => {
+    const r = await post(base, 'services');
+    assert.equal(r.status, 503);
+    assert.match((await r.json()).error, /Private environment setup incomplete/);
+  }, { env: {} });
+});
+test('only services and balance are allowed; never orders, refills or payments', async () => {
+  let calls = 0;
+  await withServer(async base => {
+    for (const action of ['add', 'order', 'refill', 'cancel', 'refund', '']) {
+      const r = await post(base, action);
+      assert.equal(r.status, 400);
+    }
+    const r = await fetch(base + '/api/orders', {method: 'POST'});
+    assert.equal(r.status, 404);
+  }, { supplierFetch: async () => { calls++; return Response.json(data); } });
+  assert.equal(calls, 0);
+});
+test('supplier request uses fixed URL, form POST and read-only action', async () => {
+  let request;
+  await withServer(async base => {
+    const r = await post(base, 'services');
+    assert.equal(r.status, 200);
+    const result = await r.json();
+    assert.equal(result.provider, 'SMMFollows');
+    assert.equal(result.readOnly, true);
+    assert.equal(result.currency, 'UNVERIFIED');
+    assert.equal(result.listed, 3);
+    assert.equal(result.valid, 2);
+    assert.equal(result.rejected, 1);
+    assert.deepEqual(result.services.map(x => [x.service, x.rate, x.min, x.max]), [[123,'0.09',100,10000],[124,'1.23',50,5000]]);
+  }, { supplierFetch: async (url, init) => { request = {url,init}; return Response.json(data); } });
+  assert.equal(request.url, 'https://smmfollows.com/api/v2');
+  assert.equal(request.init.method, 'POST');
+  const params = new URLSearchParams(request.init.body);
+  assert.deepEqual(Object.fromEntries(params.entries()), {key, action:'services'});
+  assert.equal(request.init.redirect,'error');
+});
+test('private balance returned only on authorised request', async () => {
+  await withServer(async base => {
+    const r = await post(base, 'balance');
+    assert.equal(r.status, 200);
+    assert.deepEqual(await r.json(), {provider:'SMMFollows',readOnly:true,balance:'12.34',currency:'USD'});
+  }, {supplierFetch:async () => Response.json({balance:'12.34',currency:'USD'})});
+});
+test('malformed upstream errors are sanitized and do not reveal credentials', async () => {
+  await withServer(async base => {
+    const r = await post(base, 'services');
+    assert.equal(r.status, 502);
+    const body = JSON.stringify(await r.json());
+    assert.doesNotMatch(body, /test-provider-secret|only-for-tests/);
+  }, {supplierFetch:async () => new Response('{invalid JSON', {status:200, headers:{'content-type':'application/json'}})});
+});
+test('cross-origin requests rejected without reading supplier data', async () => {
+  let calls=0;
+  await withServer(async base => {
+    const r = await post(base, 'services', token, {'Origin':'https://evil.example'});
+    assert.equal(r.status,403);
+  }, {supplierFetch:async ()=>{calls++;return Response.json(data);}});
+  assert.equal(calls,0);
+});
+test('anonymous browser cannot access owner API', async () => {
+  await withServer(async base => {
+    const r = await fetch(base+'/api/preview',{method:'POST',headers:{'content-type':'application/json'},body:'{"action":"services"}'});
+    assert.equal(r.status,401);
+  });
+});
+test('content type and oversized request are rejected', async () => {
+  await withServer(async base => {
+    const wrong = await fetch(base + '/api/preview', {method:'POST',headers:{authorization:'Bearer '+token,'content-type':'text/plain'},body:'services'});
+    assert.equal(wrong.status,415);
+    const huge = await post(base, 'services', token, {'content-type':'application/json','content-length':'2000'}).catch(()=>null);
+    // Node's fetch may reject a mismatched Content-Length before HTTP submission.
+    if (huge) assert.equal(huge.status,413);
+  });
+});

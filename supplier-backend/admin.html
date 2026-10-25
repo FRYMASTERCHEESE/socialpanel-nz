@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en-NZ">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#e9f2ff">
+  <meta name="robots" content="noindex, nofollow">
+  <title>SocialPanel NZ | Private Supplier Viewer</title>
+  <link rel="stylesheet" href="/admin/style.css">
+  <script src="/admin/app.js" defer></script>
+</head>
+<body>
+  <header><span class="mark">S</span><div><strong>SocialPanel NZ</strong><small>Private supplier console</small></div><span class="chip">Read-only</span></header>
+  <main>
+    <section class="intro">
+      <span class="eyebrow">OWNER ACCESS</span>
+      <h1>SMMFollows supplier prices</h1>
+      <p>Securely inspect supplier services and balance before deciding which services to offer. Nothing here takes customer payments or places orders.</p>
+    </section>
+    <section class="panel" aria-labelledby="access-title">
+      <h2 id="access-title">Your private access token</h2>
+      <p>Enter the <code>SOCIALPANEL_OWNER_TOKEN</code> you set in your Render environment settings. This token stays in this page only and is never saved in browser storage.</p>
+      <div class="row"><label for="token" class="sr-only">Owner access token</label><input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Enter your private owner token" minlength="24"><button id="toggle-token" type="button" class="plain">Show</button></div>
+      <div class="actions"><button id="services" type="button" class="primary">Check supplier services</button><button id="balance" type="button" class="secondary">Check supplier balance</button><button id="clear" type="button" class="plain">Clear</button></div>
+      <p id="message" class="message" role="status" aria-live="polite">Only authorised owners can request private supplier data.</p>
+    </section>
+    <section id="results" class="panel" hidden>
+      <div class="result-title"><div><span class="eyebrow">SUPPLIER RESPONSE</span><h2 id="result-heading">Results</h2></div><span class="chip muted">No orders</span></div>
+      <p id="result-note" class="small"></p>
+      <label class="search-field" id="search-label" hidden>Filter services <input id="filter" placeholder="Search by category, name, ID…" autocomplete="off"></label>
+      <div class="table-scroll" id="table-region" hidden><table><thead><tr><th>ID</th><th>Category</th><th>Service</th><th>Rate / 1K</th><th>Min</th><th>Max</th><th>Refill</th></tr></thead><tbody id="rows"></tbody></table></div>
+      <div id="balance-result" class="balance" hidden></div>
+    </section>
+    <footer>Supplier currency is unverified until checked with SMMFollows. Rates shown are supplier quotes, not retail NZD prices. Check platform rules before offering any service.</footer>
+  </main>
+</body>
+</html>

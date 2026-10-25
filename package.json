@@ -1,1 +1,14 @@
-{"name":"socialpanel-nz","version":"0.3.0","private":true,"type":"module","description":"Mobile-first SMM new-order interface with sample per-1000 pricing and optional secure backend","scripts":{"test":"node --test tests/*.test.js","check":"node --check js/app.js && node --check js/api.js && node --check js/catalog.js && node --check js/utils.js"},"engines":{"node":">=18"}}
+{
+  "name": "socialpanel-nz",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Mobile-first SMM ordering preview with isolated read-only Render supplier backend",
+  "scripts": {
+    "test": "node --test tests/*.test.js supplier-backend/tests/*.test.mjs",
+    "check": "node --check js/app.js && node --check js/api.js && node --check js/catalog.js && node --check js/utils.js && node --check supplier-backend/server.mjs && node --check supplier-backend/admin.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
