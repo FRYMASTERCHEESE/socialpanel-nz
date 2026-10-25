@@ -13,7 +13,9 @@ import { normalizeSupplierList, normalizeSupplierBalance } from '../supabase/fun
 
 const UPSTREAM = 'https://smmfollows.com/api/v2';
 const MAX_BODY_BYTES = 1024;
-const MAX_UPSTREAM_BYTES = 2_000_000;
+// Some SMM panels return thousands of records; a 2MB cap rejects valid catalogues.
+// Keep a strict upper bound for memory safety, but allow a full multi-thousand-row list.
+const MAX_UPSTREAM_BYTES = 12_000_000;
 const BODY_TIMEOUT_MS = 10_000;
 const FETCH_TIMEOUT_MS = 15_000;
 const ACCESS_TOKEN_MIN_LENGTH = 24;
@@ -56,10 +58,23 @@ async function readLimitedBody(req) {
   }
   return Buffer.concat(chunks).toString('utf8');
 }
+class SupplierPreviewError extends Error {
+  constructor(code, message) { super(message); this.code = code; }
+}
 async function readSupplierJson(response) {
-  if (!response.ok) throw new Error('Supplier currently unavailable');
-  if (Number(response.headers.get('content-length') || 0) > MAX_UPSTREAM_BYTES) throw new Error('Supplier response too large');
-  if (!response.body) throw new Error('Supplier returned an empty response');
+  // Expose only the upstream HTTP status, never its response body or credentials.
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) throw new SupplierPreviewError(
+      'SUPPLIER_ACCESS_DENIED', `SMMFollows refused the API request (HTTP ${response.status}). Check the supplier API key, permissions or supplier-side IP blocking.`);
+    if (response.status === 429) throw new SupplierPreviewError(
+      'SUPPLIER_RATE_LIMIT', 'SMMFollows is rate-limiting API requests. Try again later.');
+    throw new SupplierPreviewError('SUPPLIER_HTTP_ERROR',
+      `SMMFollows API returned HTTP ${Number(response.status) || 'error'}. Check with their support if it continues.`);
+  }
+  if (Number(response.headers.get('content-length') || 0) > MAX_UPSTREAM_BYTES) {
+    throw new SupplierPreviewError('SUPPLIER_TOO_LARGE', 'SMMFollows catalogue exceeds the 12 MB safe response limit.');
+  }
+  if (!response.body) throw new SupplierPreviewError('SUPPLIER_EMPTY', 'SMMFollows returned an empty response.');
   const reader = response.body.getReader();
   const chunks = [];
   let size = 0;
@@ -68,15 +83,31 @@ async function readSupplierJson(response) {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > MAX_UPSTREAM_BYTES) throw new Error('Supplier response too large');
+      if (size > MAX_UPSTREAM_BYTES) throw new SupplierPreviewError(
+        'SUPPLIER_TOO_LARGE', 'SMMFollows catalogue exceeds the 12 MB safe response limit.');
       chunks.push(Buffer.from(value));
     }
   } finally { await reader.cancel().catch(() => {}); }
   let result;
   try { result = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
-  catch { throw new Error('Supplier returned invalid JSON'); }
-  if (result && !Array.isArray(result) && typeof result === 'object' && result.error) throw new Error('Supplier rejected the request; check your key or account settings');
+  catch { throw new SupplierPreviewError(
+    'SUPPLIER_NOT_JSON', 'SMMFollows returned something other than JSON, possibly a login or security-check page.'); }
+  if (result && !Array.isArray(result) && typeof result === 'object' && result.error) {
+    throw new SupplierPreviewError('SUPPLIER_REJECTED',
+      'SMMFollows rejected the API request. Check your private supplier key and account API permissions.');
+  }
   return result;
+}
+function safeSupplierFailure(error) {
+  if (error instanceof SupplierPreviewError) return {code:error.code,error:error.message};
+  if (error && (error.name === 'TimeoutError' || error.name === 'AbortError')) return {
+    code:'SUPPLIER_TIMEOUT', error:'SMMFollows did not respond within 15 seconds. Try again later.'
+  };
+  if (error instanceof TypeError) return {
+    code:'SUPPLIER_NETWORK', error:'The Render server could not reach SMMFollows. Check supplier availability or API access.'
+  };
+  // Unrecognized payloads or parsing errors are never forwarded or logged verbatim.
+  return {code:'SUPPLIER_FORMAT',error:'SMMFollows responded, but its service or balance data could not be processed. Contact support if this continues.'};
 }
 
 export function createHandler({ env = process.env, supplierFetch = globalThis.fetch } = {}) {
@@ -143,9 +174,10 @@ export function createHandler({ env = process.env, supplierFetch = globalThis.fe
       const data = await readSupplierJson(upstream);
       const safe = action === 'services' ? normalizeSupplierList(data, 300) : normalizeSupplierBalance(data);
       return json(res, 200, { provider: 'SMMFollows', readOnly: true, ...safe });
-    } catch {
-      // Never reveal upstream responses, stack traces, supplier keys, or owner tokens.
-      return json(res, 502, { error: 'Supplier check failed — verify your private key and try again' });
+    } catch (error) {
+      // Never reveal upstream bodies, stack traces, supplier keys or owner tokens.
+      // These safe reason codes distinguish catalogue size, supplier denial and networking.
+      return json(res, 502, safeSupplierFailure(error));
     }
   };
 }
