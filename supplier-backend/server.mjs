@@ -15,6 +15,7 @@ import { normalizeSupplierList, normalizeSupplierBalance } from '../supabase/fun
 const SUPPLIERS = Object.freeze({
   smmfollows: Object.freeze({name:'SMMFollows',endpoint:'https://smmfollows.com/api/v2',keyName:'SMMFOLLOWS_API_KEY'}),
   smmlite: Object.freeze({name:'SMMLite',endpoint:'https://smmlite.com/api/v2',keyName:'SMMLITE_API_KEY'}),
+  daosmm: Object.freeze({name:'DaoSMM',endpoint:'https://daosmm.com/api/v2',keyName:'DAOSMM_API_KEY'}),
 });
 const MAX_BODY_BYTES = 1024;
 // Some SMM panels return thousands of records; a 2MB cap rejects valid catalogues.
@@ -88,7 +89,7 @@ async function readSupplierJson(response, providerName) {
       if (done) break;
       size += value.byteLength;
       if (size > MAX_UPSTREAM_BYTES) throw new SupplierPreviewError(
-        'SUPPLIER_TOO_LARGE', 'SMMFollows catalogue exceeds the 12 MB safe response limit.');
+        'SUPPLIER_TOO_LARGE', `${providerName} catalogue exceeds the 12 MB safe response limit.`);
       chunks.push(Buffer.from(value));
     }
   } finally { await reader.cancel().catch(() => {}); }

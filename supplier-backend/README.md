@@ -1,6 +1,6 @@
 # SocialPanel NZ — isolated Render supplier preview
 
-This tiny Node.js 22+ service runs separately on Render Free, using **only** the `FRYMASTERCHEESE/socialpanel-nz` repository. It is a read-only, owner-authenticated viewer for the SMMFollows supplier `POST https://smmfollows.com/api/v2` API.
+This tiny Node.js 22+ service runs separately on Render Free, using **only** the `FRYMASTERCHEESE/socialpanel-nz` repository. It is a read-only, owner-authenticated viewer for SMMFollows, SMMLite and DaoSMM reseller catalogue and balance APIs.
 
 ## Live endpoints
 
@@ -57,3 +57,26 @@ SMMLite advertises API access, but its exact authenticated API endpoint has not 
 4. Confirm live API endpoint, currency, minimum quantities, quality and service terms before making any pricing decisions. Website sales and automated orders remain disabled.
 
 The backend supports exactly two suppliers and only `services`/`balance` actions. There is no supplier `add`, refills, cancellations, customer payments, public wholesale disclosure or order fulfilment action. SMM-panel catalogue rates for different services must not be assumed equivalent.
+
+## DaoSMM supplier (third provider, read-only)
+
+DaoSMM's official code example at https://daosmm.com/example.txt documents
+`POST https://daosmm.com/api/v2` using form fields `key` and `action`.
+This integration permits only `services` and `balance`, not `add`, `status`,
+`refill`, `cancel`, funds, orders or imports.
+
+1. In the existing **SocialPanel NZ supplier** Render service, open **Environment**.
+2. Add the secret `DAOSMM_API_KEY` using the DaoSMM API key from your own account.
+   **Never** put the key in chat, your public GitHub repository, browser JavaScript or website config.
+   Leave existing `SMMLITE_API_KEY`, `SMMFOLLOWS_API_KEY` and `SOCIALPANEL_OWNER_TOKEN` unchanged.
+3. Save and deploy, then open the existing `/admin` viewer, choose **DaoSMM**,
+   enter the **same** owner token, check **supplier balance** (including currency),
+   then check **supplier services**. The new provider fails closed until configured.
+4. Inspect actual DaoSMM service IDs, limits, quality claims and currency before comparing
+   rates, importing or publishing anything. Real order placement remains disabled.
+   Currency for `services` responses remains **UNVERIFIED** until the balance endpoint confirms it.
+
+**Price clarity:** DaoSMM #8719 showed a $30.00 charge at quantity 10,000 and a
+10,000 maximum per order in the provided screenshot (equivalent to $3.00/1,000 in its
+displayed currency). It is not a US$0.0044-per-1,000 offer. A 100,000 quantity would
+require multiple separate orders *if permitted*, and none has been placed.

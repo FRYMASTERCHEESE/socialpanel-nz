@@ -4,7 +4,8 @@ const el = (id) => document.getElementById(id);
 const input = el('token');
 const message = el('message');
 const provider = el('provider');
-const supplierLabel = () => provider.value === 'smmlite' ? 'SMMLite' : 'SMMFollows';
+const SUPPLIER_NAMES = Object.freeze({smmfollows:'SMMFollows',smmlite:'SMMLite',daosmm:'DaoSMM'});
+const supplierLabel = () => SUPPLIER_NAMES[provider.value] || 'Unknown supplier';
 let services = [];
 let currentPage = 0;
 const pageSize = 75;
@@ -70,7 +71,7 @@ async function check(action) {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Connection was unsuccessful');
-    if (data.readOnly !== true || data.provider !== (selectedProvider === 'smmlite' ? 'SMMLite' : 'SMMFollows')) throw new Error('Unexpected response');
+    if (data.readOnly !== true || data.provider !== SUPPLIER_NAMES[selectedProvider]) throw new Error('Unexpected response');
     clearRows(); el('results').hidden = false;
     if (action === 'services') {
       services = Array.isArray(data.services) ? data.services : [];

@@ -207,3 +207,75 @@ test('excluded rows report individual reasons without echoing supplier data', as
     assert.doesNotMatch(JSON.stringify(result),/invalid JSON|test-provider-secret/);
   },{supplierFetch:async()=>Response.json(mixed)});
 });
+
+test('DaoSMM uses isolated secret and fixed v2 endpoint for read-only services and balance', async () => {
+  const daoKey = 'synthetic-dao-secret-not-for-production';
+  const calls = [];
+  const postDao = (base, action) => fetch(base + '/api/preview', {
+    method: 'POST',
+    headers: {'content-type':'application/json','authorization':'Bearer '+token},
+    body: JSON.stringify({action,provider:'daosmm'}),
+  });
+  await withServer(async base => {
+    const services = await postDao(base, 'services');
+    assert.equal(services.status, 200);
+    const servicesBody = await services.json();
+    assert.equal(servicesBody.provider,'DaoSMM');
+    assert.equal(servicesBody.readOnly,true);
+    assert.equal(servicesBody.services.length,2);
+    const balance = await postDao(base, 'balance');
+    assert.equal(balance.status,200);
+    assert.deepEqual(await balance.json(),{provider:'DaoSMM',readOnly:true,balance:'4.20',currency:'USD'});
+    const denied = await postDao(base, 'add');
+    assert.equal(denied.status,400);
+  }, {
+    env: {...env,DAOSMM_API_KEY:daoKey},
+    supplierFetch: async (url,init) => {
+      const data = Object.fromEntries(new URLSearchParams(init.body).entries());
+      calls.push({url,method:init.method,redirect:init.redirect,form:data});
+      return Response.json(data.action==='services' ? [
+        {service:8719,name:'YouTube Subscribers',category:'YouTube',rate:'3.00',min:'100',max:'10000'},
+        {service:8719,name:'duplicate',rate:'5.00',min:'100',max:'10000'},
+        {service:8720,name:'Views',category:'YouTube',rate:'1.00',min:'100',max:'10000'},
+      ] : {balance:'4.20',currency:'USD'});
+    }
+  });
+  assert.equal(calls.length,2);
+  assert.deepEqual(calls.map(x=>x.url),['https://daosmm.com/api/v2','https://daosmm.com/api/v2']);
+  assert.deepEqual(calls.map(x=>x.form),[
+    {key:daoKey,action:'services'},{key:daoKey,action:'balance'}
+  ]);
+  assert.ok(calls.every(x=>x.method==='POST' && x.redirect==='error'));
+});
+
+test('DaoSMM refuses missing key, unknown provider, and unsigned access without supplier requests', async () => {
+  let calls=0;
+  const send = (base,payload,auth=token) => fetch(base+'/api/preview',{
+    method:'POST',
+    headers:{'content-type':'application/json','authorization':'Bearer '+auth},
+    body:JSON.stringify(payload)
+  });
+  await withServer(async base => {
+    const missing = await send(base,{action:'services',provider:'daosmm'});
+    assert.equal(missing.status,503);
+    assert.match((await missing.json()).error,/DaoSMM key not configured/);
+    const unknown = await send(base,{action:'services',provider:'https://evil.test'});
+    assert.equal(unknown.status,400);
+    const unauthorized = await send(base,{action:'services',provider:'daosmm'},'a-wrong-owner-token-over-24-chars');
+    assert.equal(unauthorized.status,401);
+    const hidden = await fetch(base+'/api/preview',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'balance',provider:'daosmm'})});
+    assert.equal(hidden.status,401);
+  },{env,supplierFetch:async()=>{calls++;return Response.json({balance:'1',currency:'USD'});}});
+  assert.equal(calls,0);
+});
+
+test('Admin selector explicitly includes all three suppliers',async()=>{
+  await withServer(async base=>{
+    const res=await fetch(base+'/admin');
+    assert.equal(res.status,200);
+    const html=await res.text();
+    assert.match(html,/option value="smmfollows"/);
+    assert.match(html,/option value="smmlite"/);
+    assert.match(html,/option value="daosmm"/);
+  });
+});
