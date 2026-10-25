@@ -131,3 +131,55 @@ test('content type and oversized request are rejected', async () => {
     if (huge) assert.equal(huge.status,413);
   });
 });
+
+
+test('large legitimate catalogue above old 2MB limit is accepted but output stays capped at 300', async () => {
+  const big = Array.from({length:6600},(_,i)=>({service:i+1,name:'Test sample '+ 'x'.repeat(140),
+    category:'Test / '+ 'y'.repeat(75),type:'Default',rate:'0.12',min:'100',max:'100000',refill:false}));
+  const bytes = Buffer.byteLength(JSON.stringify(big));
+  assert.ok(bytes>2_000_000&&bytes<12_000_000, `Unexpected fixture size ${bytes}`);
+  await withServer(async base=>{
+    const r=await post(base,'services');
+    assert.equal(r.status,200);
+    const result=await r.json();
+    assert.equal(result.listed,6600);
+    assert.equal(result.valid,6600);
+    assert.equal(result.services.length,300);
+    assert.equal(result.truncated,true);
+    assert.equal(result.readOnly,true);
+  },{supplierFetch:async()=>Response.json(big)});
+});
+
+test('HTTP 403 and provider errors show safe distinct messages, never secret values', async () => {
+  await withServer(async base=>{
+    const r=await post(base,'services');
+    assert.equal(r.status,502);
+    const body=await r.json();
+    assert.equal(body.code,'SUPPLIER_ACCESS_DENIED');
+    assert.match(body.error,/HTTP 403/);
+    assert.doesNotMatch(JSON.stringify(body), /test-provider-secret|only-for-tests/);
+  },{supplierFetch:async()=>new Response('some sensitive provider error',{status:403})});
+  await withServer(async base=>{
+    const r=await post(base,'balance');
+    assert.equal(r.status,502);
+    assert.equal((await r.json()).code,'SUPPLIER_REJECTED');
+  },{supplierFetch:async()=>Response.json({error:'Invalid key: '+key})});
+});
+
+test('invalid JSON, rate limits, catalogue size and invalid data have distinct safe codes', async () => {
+  const samples=[
+    [new Response('<html>Security challenge</html>',{status:200}),'SUPPLIER_NOT_JSON'],
+    [new Response('',{status:429}),'SUPPLIER_RATE_LIMIT'],
+    [new Response('[]',{status:200,headers:{'content-length':'15000000'}}),'SUPPLIER_TOO_LARGE'],
+    [Response.json({unknown:1}),'SUPPLIER_FORMAT'],
+  ];
+  for(const [reply,expected] of samples){
+    await withServer(async base=>{
+      const r=await post(base,'services');
+      assert.equal(r.status,502);
+      const body=await r.json();
+      assert.equal(body.code,expected);
+      assert.equal(typeof body.error,'string');
+    },{supplierFetch:async()=>reply});
+  }
+});
