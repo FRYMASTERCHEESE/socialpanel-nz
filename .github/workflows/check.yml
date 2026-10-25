@@ -14,5 +14,9 @@ jobs:
           node-version: '22'
       - name: Check JS syntax
         run: npm run check
-      - name: Run tests
+      - name: Run website tests
         run: npm test
+      - name: Check supplier backend syntax
+        run: node --check supplier-backend/server.mjs && node --check supplier-backend/admin.js
+      - name: Run supplier backend tests
+        run: node --test supplier-backend/tests/*.test.mjs
