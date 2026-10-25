@@ -3,6 +3,8 @@
 window.SOCIALPANEL_CONFIG = Object.freeze({
   brand: 'SocialPanel NZ',
   currency: 'NZD',
+  // Orders remain disabled until backend intake is approved and verified.
+  ordersEnabled: false,
   supabaseUrl: '',
   supabasePublishableKey: '', // use a browser-safe sb_publishable_... key
   supabaseAnonKey: '', // legacy anon key fallback only

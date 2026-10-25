@@ -1,5 +1,6 @@
 -- SocialPanel NZ standalone database bootstrap (run ONLY in a NEW, isolated Supabase project).
--- No real payments, fake engagement, supplier APIs or admin accounts are enabled by this file.
+-- No real payments, supplier APIs or order intake are enabled by this file.
+-- All storefront sample rates are browser-only and are NOT imported here.
 -- Requires Supabase Auth (auth.users/auth.uid/auth.jwt); Postgres 15+ recommended.
 -- IMPORTANT: review policies / run security advisors before taking real customers.
 
@@ -29,12 +30,27 @@ create table if not exists public.services (
   name text not null check (char_length(name) between 3 and 150),
   description text not null default '' check (char_length(description) <= 1500),
   price_cents integer not null check (price_cents between 1 and 10000000),
-  unit text not null default 'per campaign' check (char_length(unit) between 1 and 40),
+  price_unit text not null default 'per_1000' check (price_unit in ('per_1000','per_package')),
+  min_quantity integer not null default 100 check (min_quantity between 1 and 1000000),
+  max_quantity integer not null default 100000 check (max_quantity between 1 and 1000000 and max_quantity >= min_quantity),
+  refill text not null default 'Not confirmed' check (char_length(refill) <= 80),
+  unit text not null default 'per 1,000'  check (char_length(unit) between 1 and 40),
   delivery text not null default 'To be agreed' check (char_length(delivery) between 1 and 80),
   featured boolean not null default false,
   is_active boolean not null default false,
   created_at timestamptz not null default now()
 );
+
+-- No money or supplier order should be accepted before owner sign-off.
+-- Private, server-only gate; no browser role receives write access.
+create table if not exists app_private.panel_controls (
+  only_row boolean primary key default true check (only_row),
+  order_intake_enabled boolean not null default false
+);
+insert into app_private.panel_controls(only_row,order_intake_enabled) values (true,false) on conflict(only_row) do nothing;
+alter table app_private.panel_controls enable row level security;
+revoke all on app_private.panel_controls from public,anon,authenticated;
+
 create table if not exists public.orders (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -43,7 +59,7 @@ create table if not exists public.orders (
   service_name text not null,
   platform text not null,
   target_url text not null check (char_length(target_url) between 10 and 2000 and target_url ~* '^https?://[^[:space:]]+$'),
-  quantity integer not null check (quantity between 1 and 100),
+  quantity integer not null check (quantity between 1 and 1000000),
   amount_cents bigint not null check (amount_cents > 0),
   status text not null default 'pending' check (status in ('pending','processing','completed','cancelled','refunded')),
   created_at timestamptz not null default now(),
@@ -134,11 +150,13 @@ language plpgsql security definer set search_path = '' as $$
 declare v_uid uuid := auth.uid(); v_service public.services%rowtype; v_total bigint; v_available bigint; v_id uuid;
 begin
   if v_uid is null or coalesce((auth.jwt()->>'is_anonymous')::boolean,false) then raise exception 'Sign in to place an order'; end if;
-  if p_quantity is null or p_quantity not between 1 and 100 then raise exception 'Quantity must be 1–100'; end if;
+  if not coalesce((select order_intake_enabled from app_private.panel_controls where only_row=true),false) then raise exception 'Real order intake is disabled until fulfilment is verified'; end if;
   if p_target_url is null or char_length(p_target_url) not between 10 and 2000 or p_target_url !~* '^https?://[^[:space:]]+$' then raise exception 'A valid public URL is required'; end if;
   select * into v_service from public.services where id=p_service_id and is_active=true;
   if not found then raise exception 'Service is unavailable'; end if;
-  v_total := v_service.price_cents::bigint*p_quantity::bigint;
+  if p_quantity is null or p_quantity not between v_service.min_quantity and v_service.max_quantity then raise exception 'Quantity is outside the service limits'; end if;
+  v_total := case when v_service.price_unit='per_1000' then greatest(1,ceil(v_service.price_cents::numeric*p_quantity/1000)::bigint) else v_service.price_cents::bigint*p_quantity::bigint end;
+  if v_total > 10000000000 then raise exception 'Order exceeds maximum allowable amount'; end if;
   select balance_cents into v_available from public.wallets where user_id=v_uid for update;
   if not found then raise exception 'Wallet missing'; end if;
   if v_available < v_total then raise exception 'Insufficient verified wallet balance'; end if;
