@@ -133,7 +133,7 @@ test('content type and oversized request are rejected', async () => {
 });
 
 
-test('large legitimate catalogue above old 2MB limit is accepted but output stays capped at 300', async () => {
+test('large legitimate catalogue above old 2MB limit is accepted and loads up to 5000 valid entries', async () => {
   const big = Array.from({length:6600},(_,i)=>({service:i+1,name:'Test sample '+ 'x'.repeat(140),
     category:'Test / '+ 'y'.repeat(75),type:'Default',rate:'0.12',min:'100',max:'100000',refill:false}));
   const bytes = Buffer.byteLength(JSON.stringify(big));
@@ -144,7 +144,7 @@ test('large legitimate catalogue above old 2MB limit is accepted but output stay
     const result=await r.json();
     assert.equal(result.listed,6600);
     assert.equal(result.valid,6600);
-    assert.equal(result.services.length,300);
+    assert.equal(result.services.length,5000);
     assert.equal(result.truncated,true);
     assert.equal(result.readOnly,true);
   },{supplierFetch:async()=>Response.json(big)});
@@ -182,4 +182,28 @@ test('invalid JSON, rate limits, catalogue size and invalid data have distinct s
       assert.equal(typeof body.error,'string');
     },{supplierFetch:async()=>reply});
   }
+});
+
+
+test('excluded rows report individual reasons without echoing supplier data', async () => {
+  const mixed = [
+    ...data,
+    null,
+    {service:'bad',name:'X',rate:'0.01',min:'1',max:'100'},
+    {service:201,name:'',rate:'0.01',min:'1',max:'100'},
+    {service:202,name:'Y',rate:'invalid',min:'1',max:'100'},
+    {service:203,name:'Z',rate:'0.01',min:'0',max:'100'},
+  ];
+  await withServer(async base=>{
+    const r = await post(base,'services');
+    assert.equal(r.status,200);
+    const result=await r.json();
+    assert.equal(result.valid,2);
+    assert.equal(result.rejected,6);
+    assert.deepEqual(result.rejectedReasons,{
+      invalidRecord:1,invalidId:1,missingName:1,invalidRate:1,invalidQuantityRange:1,duplicateId:1
+    });
+    assert.equal(result.rejected+result.valid,result.listed);
+    assert.doesNotMatch(JSON.stringify(result),/invalid JSON|test-provider-secret/);
+  },{supplierFetch:async()=>Response.json(mixed)});
 });

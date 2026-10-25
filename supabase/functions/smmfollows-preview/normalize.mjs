@@ -24,12 +24,14 @@ function flag(value) {
 export function normalizeSupplierList(payload, limit = 300) {
   if (!Array.isArray(payload)) throw Error('Supplier returned an invalid service list');
   if (payload.length > 100_000) throw Error('Supplier returned too many services');
-  const safeLimit = Number.isSafeInteger(limit) ? Math.max(1, Math.min(limit, 1000)) : 300;
-  const result = [];
+  // An owner preview may inspect up to 5,000 vetted rows. Pagination happens in the browser.
+  const safeLimit = Number.isSafeInteger(limit) ? Math.max(1, Math.min(limit, 5000)) : 300;
+  const services = [];
   const seen = new Set();
-  let rejected = 0;
+  // Only counts are returned. Never echo untrusted supplier rows that fail validation.
+  const rejectedReasons = {invalidRecord:0, invalidId:0, missingName:0, invalidRate:0, invalidQuantityRange:0, duplicateId:0};
   for (const raw of payload) {
-    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) { rejected++; continue; }
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) { rejectedReasons.invalidRecord++; continue; }
     const id = asPositiveInteger(raw.service, 2_147_483_647);
     const name = cleanText(raw.name, 160);
     const category = cleanText(raw.category, 100);
@@ -37,13 +39,19 @@ export function normalizeSupplierList(payload, limit = 300) {
     const rate = rateText(raw.rate);
     const min = asPositiveInteger(raw.min);
     const max = asPositiveInteger(raw.max);
-    if (!id || !name || !rate || !min || !max || max < min || seen.has(id)) { rejected++; continue; }
+    if (!id) { rejectedReasons.invalidId++; continue; }
+    if (!name) { rejectedReasons.missingName++; continue; }
+    if (!rate) { rejectedReasons.invalidRate++; continue; }
+    if (!min || !max || max < min) { rejectedReasons.invalidQuantityRange++; continue; }
+    if (seen.has(id)) { rejectedReasons.duplicateId++; continue; }
     seen.add(id);
-    if (result.length < safeLimit) {
-      result.push({service:id,name,category,type,rate,min,max,refill:flag(raw.refill),cancel:flag(raw.cancel)});
+    if (services.length < safeLimit) {
+      services.push({service:id,name,category,type,rate,min,max,refill:flag(raw.refill),cancel:flag(raw.cancel)});
     }
   }
-  return {services:result,listed:payload.length,valid:seen.size,rejected,truncated:seen.size>result.length,
+  const rejected = Object.values(rejectedReasons).reduce((n, count) => n + count, 0);
+  return {services, listed:payload.length, valid:seen.size, rejected, rejectedReasons,
+    truncated:seen.size>services.length,
     currency:'UNVERIFIED',note:'Rates are per 1,000 in the supplier currency; verify live currency, prices, eligibility and TOS. No services imported or published.'};
 }
 export function normalizeSupplierBalance(payload) {

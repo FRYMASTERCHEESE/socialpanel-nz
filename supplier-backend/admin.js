@@ -4,30 +4,54 @@ const el = (id) => document.getElementById(id);
 const input = el('token');
 const message = el('message');
 let services = [];
+let currentPage = 0;
+const pageSize = 75;
 function status(text, kind = '') { message.textContent = text; message.className = 'message ' + kind; }
-function clearRows() { el('rows').replaceChildren(); el('balance-result').hidden = true; el('table-region').hidden = true; el('search-label').hidden = true; }
+function clearRows() {
+  el('rows').replaceChildren();
+  for (const id of ['balance-result','table-region','search-label','service-controls','pager']) el(id).hidden = true;
+}
 function cell(row, text) { const td = document.createElement('td'); td.textContent = String(text ?? ''); row.appendChild(td); }
-function renderRows(list) {
+function filteredServices() {
+  const value = el('filter').value.toLocaleLowerCase().trim();
+  const items = services.filter(s => [s.service,s.name,s.category,s.type].some(t => String(t).toLocaleLowerCase().includes(value)));
+  const sort = el('sort-services').value;
+  if (sort === 'cheapest') items.sort((a,b) => Number(a.rate)-Number(b.rate) || a.service-b.service);
+  if (sort === 'expensive') items.sort((a,b) => Number(b.rate)-Number(a.rate) || a.service-b.service);
+  if (sort === 'name') items.sort((a,b) => a.name.localeCompare(b.name) || a.service-b.service);
+  return items;
+}
+function renderRows() {
+  const matches = filteredServices();
+  const pages = Math.max(1, Math.ceil(matches.length / pageSize));
+  currentPage = Math.max(0, Math.min(currentPage, pages - 1));
   const body = el('rows'); body.replaceChildren();
   const frag = document.createDocumentFragment();
-  for (const item of list.slice(0, 300)) {
+  const start = currentPage * pageSize;
+  for (const item of matches.slice(start, start + pageSize)) {
     const tr = document.createElement('tr');
     cell(tr, item.service); cell(tr, item.category); cell(tr, item.name); cell(tr, item.rate);
     cell(tr, item.min); cell(tr, item.max); cell(tr, item.refill ? 'Yes' : 'Not confirmed');
     frag.appendChild(tr);
   }
   body.appendChild(frag);
+  el('pager').hidden = false;
+  el('page-status').textContent = matches.length ?
+    `Showing ${start+1}–${Math.min(start+pageSize,matches.length)} of ${matches.length} matching services (page ${currentPage+1} of ${pages})` :
+    'No services match your search';
+  el('prev-page').disabled = currentPage === 0;
+  el('next-page').disabled = currentPage >= pages - 1;
 }
-el('filter').addEventListener('input', () => {
-  const value = el('filter').value.toLocaleLowerCase();
-  renderRows(services.filter(s => [s.service, s.name, s.category, s.type].some(t => String(t).toLowerCase().includes(value))));
-});
+el('filter').addEventListener('input', () => { currentPage = 0; renderRows(); });
+el('sort-services').addEventListener('change', () => { currentPage = 0; renderRows(); });
+el('prev-page').addEventListener('click', () => { currentPage--; renderRows(); });
+el('next-page').addEventListener('click', () => { currentPage++; renderRows(); });
 el('toggle-token').addEventListener('click', () => {
   const shown = input.type === 'text'; input.type = shown ? 'password' : 'text';
   el('toggle-token').textContent = shown ? 'Show' : 'Hide';
 });
 el('clear').addEventListener('click', () => {
-  input.value = ''; services = []; clearRows(); el('results').hidden = true;
+  input.value = ''; services = []; currentPage = 0; clearRows(); el('results').hidden = true;
   status('Cleared. Access token was not stored on this device.');
 });
 async function check(action) {
@@ -46,10 +70,21 @@ async function check(action) {
     clearRows(); el('results').hidden = false;
     if (action === 'services') {
       services = Array.isArray(data.services) ? data.services : [];
-      el('result-heading').textContent = 'Supplier services (' + services.length + ' shown)';
-      el('result-note').textContent = 'Supplier rates per 1,000. Currency UNVERIFIED — these are private supplier quotes, not customer selling prices. ' + (data.truncated ? 'Only the first 300 valid services are displayed. ' : '') + (data.rejected ? data.rejected + ' invalid/duplicate rows excluded.' : '');
+      el('result-heading').textContent = `Supplier services (${services.length.toLocaleString()} loaded)`;
+      const counts = data.rejectedReasons || {};
+      const reasons = [
+        ['duplicateId','duplicate IDs'],['invalidQuantityRange','invalid quantity limits'],
+        ['invalidRate','invalid rates'],['invalidId','invalid IDs'],
+        ['missingName','missing names'],['invalidRecord','other invalid records']
+      ].filter(([key]) => Number(counts[key]) > 0).map(([key,label]) => `${counts[key]} ${label}`).join(', ');
+      el('result-note').textContent = `Supplier rates per 1,000 in UNVERIFIED currency — private quotes, not customer prices. ` +
+        `${data.valid} valid unique services in ${data.listed} supplier rows. ` +
+        (data.truncated ? `Only the first ${services.length} valid entries were loaded. ` : '') +
+        (data.rejected ? `${data.rejected} rows excluded${reasons ? ' ('+reasons+')' : ''}. ` : '') +
+        'Check terms and verify currency before using any rate. Nothing is published.';
       el('search-label').hidden = false; el('filter').value = ''; el('table-region').hidden = false;
-      renderRows(services);
+      el('service-controls').hidden = false; el('sort-services').value = 'supplier';
+      currentPage = 0; renderRows();
       status('Retrieved a read-only supplier list. Nothing was ordered, charged, or published.', 'success');
     } else {
       services = [];

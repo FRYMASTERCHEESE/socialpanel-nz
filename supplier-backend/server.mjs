@@ -172,7 +172,7 @@ export function createHandler({ env = process.env, supplierFetch = globalThis.fe
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       const data = await readSupplierJson(upstream);
-      const safe = action === 'services' ? normalizeSupplierList(data, 300) : normalizeSupplierBalance(data);
+      const safe = action === 'services' ? normalizeSupplierList(data, 5000) : normalizeSupplierBalance(data);
       return json(res, 200, { provider: 'SMMFollows', readOnly: true, ...safe });
     } catch (error) {
       // Never reveal upstream bodies, stack traces, supplier keys or owner tokens.

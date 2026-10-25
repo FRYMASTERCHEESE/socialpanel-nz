@@ -28,7 +28,21 @@
       <div class="result-title"><div><span class="eyebrow">SUPPLIER RESPONSE</span><h2 id="result-heading">Results</h2></div><span class="chip muted">No orders</span></div>
       <p id="result-note" class="small"></p>
       <label class="search-field" id="search-label" hidden>Filter services <input id="filter" placeholder="Search by category, name, ID…" autocomplete="off"></label>
+      <div class="service-controls" id="service-controls" hidden>
+        <label for="sort-services">Sort services
+          <select id="sort-services">
+            <option value="supplier">Supplier order</option>
+            <option value="cheapest">Cheapest first</option>
+            <option value="expensive">Highest rate first</option>
+            <option value="name">Service name A–Z</option>
+          </select>
+        </label>
+      </div>
       <div class="table-scroll" id="table-region" hidden><table><thead><tr><th>ID</th><th>Category</th><th>Service</th><th>Rate / 1K</th><th>Min</th><th>Max</th><th>Refill</th></tr></thead><tbody id="rows"></tbody></table></div>
+      <div class="pager" id="pager" hidden>
+        <span id="page-status" role="status" aria-live="polite"></span>
+        <div><button type="button" id="prev-page" class="plain">Previous</button><button type="button" id="next-page" class="secondary">Next</button></div>
+      </div>
       <div id="balance-result" class="balance" hidden></div>
     </section>
     <footer>Supplier currency is unverified until checked with SMMFollows. Rates shown are supplier quotes, not retail NZD prices. Check platform rules before offering any service.</footer>

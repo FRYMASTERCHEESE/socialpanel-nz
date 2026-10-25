@@ -42,3 +42,7 @@ node --check supplier-backend/admin.js
 ```
 
 Tests use synthetic upstream responses and do not call SMMFollows or place orders.
+
+## Catalogue inspection (owner-only)
+
+The owner viewer fetches up to 5,000 valid unique SMMFollows services at a time, filters the loaded list, and paginates in groups of 75 to keep mobile devices responsive. Use **Cheapest first** to compare supplier rates per 1,000 **within the supplier's unverified currency**. Diagnostic counts distinguish duplicate IDs, invalid rates, invalid quantities and malformed entries. No rejected supplier data or credentials are displayed. The browser does not persist the supplier catalogue or owner token. If the provider returns over 5,000 valid services, the viewer marks the list truncated; this limit is intentional, not a supplier guarantee.
