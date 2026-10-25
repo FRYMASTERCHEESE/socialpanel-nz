@@ -1,0 +1,10 @@
+# Never commit secrets, local credentials or build outputs.
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+node_modules/
+supabase/.temp/
+*.secret
+*.pem

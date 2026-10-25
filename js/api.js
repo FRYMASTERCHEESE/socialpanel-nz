@@ -27,6 +27,17 @@ export async function orders(){return unwrap(assertClient().from('orders').selec
 export async function placeOrder(serviceId,targetUrl,quantity){return unwrap(assertClient().rpc('place_order',{p_service_id:serviceId,p_target_url:targetUrl,p_quantity:quantity}));}
 export async function tickets(){return unwrap(assertClient().from('tickets').select('id,subject,message,status,created_at').order('created_at',{ascending:false}).limit(100));}
 export async function createTicket(subject,message){return unwrap(assertClient().from('tickets').insert({subject,message}).select('id').single());}
+// Owner-only supplier API preview. Secret stays inside the separate Supabase Edge Function.
+// This operation never imports services, submits supplier orders or updates wallet money.
+export async function supplierPreview(action='services'){
+  if(action!=='services'&&action!=='balance')throw Error('Only read-only supplier actions are supported.');
+  const c=assertClient();
+  const {data,error}=await c.functions.invoke('smmfollows-preview',{body:{action}});
+  if(error)throw Error(error.message||'Supplier preview function is unavailable.');
+  if(data?.error)throw Error(data.error);
+  if(!data?.readOnly||data.provider!=='SMMFollows')throw Error('Supplier preview response was invalid.');
+  return data;
+}
 export async function allServices(){return unwrap(assertClient().from('services').select('*').order('created_at',{ascending:false}));}
 export async function adminOrders(){return unwrap(assertClient().from('orders').select('id,user_id,service_name,amount_cents,status,created_at').order('created_at',{ascending:false}).limit(200));}
 export async function saveService(row){const c=assertClient();const clean={platform:row.platform,name:row.name,description:row.description,price_cents:row.price_cents,price_unit:row.price_unit,min_quantity:row.min_quantity,max_quantity:row.max_quantity,refill:row.refill||'Not confirmed',delivery:row.delivery,unit:row.unit,featured:row.featured,is_active:row.is_active};if(row.id){return unwrap(c.from('services').update(clean).eq('id',row.id).select().single());}return unwrap(c.from('services').insert({...clean,code:row.code}).select().single());}
