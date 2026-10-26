@@ -18,6 +18,7 @@ const SUPPLIERS = Object.freeze({
   daosmm: Object.freeze({name:'DaoSMM',endpoint:'https://daosmm.com/api/v2',keyName:'DAOSMM_API_KEY'}),
   likeo: Object.freeze({name:'Likeo',endpoint:'https://likeo.net/api/v2',keyName:'LIKEO_API_KEY'}),
   alhitaan: Object.freeze({name:'Alhitaan',endpoint:'https://alhitaan.com/api/v2',keyName:'ALHITAAN_API_KEY'}),
+  smmasia: Object.freeze({name:'SMMASIA',endpoint:'https://smmasia.org/api/v2',keyName:'SMMASIA_API_KEY'}),
 });
 const MAX_BODY_BYTES = 1024;
 // Some SMM panels return thousands of records; a 2MB cap rejects valid catalogues.
