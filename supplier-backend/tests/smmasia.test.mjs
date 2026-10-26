@@ -6,9 +6,7 @@ import { createHandler } from '../server.mjs';
 
 const OWNER = 'example-admin-access-token-long-enough-not-real';
 const KEY = 'example-smmasia-key-not-real';
-const env = { SOCIAlPANEL_OWNER_TOKEN: OWNER, SMMASIA_API_KEY: KEY };
-// Intentionally use the actual environment variable spelling.
-env.SOCIALPANEL_OWNER_TOKEN = OWNER;
+const env = { SOCIALPANEL_OWNER_TOKEN: OWNER, SMMASIA_API_KEY: KEY };
 async function withServer(callback, options = {}) {
   const server = createServer(createHandler({env:options.env ?? env,supplierFetch:options.supplierFetch ?? (async()=>Response.json([]))}));
   server.listen(0,'127.0.0.1');
