@@ -4,7 +4,7 @@ const el = (id) => document.getElementById(id);
 const input = el('token');
 const message = el('message');
 const provider = el('provider');
-const SUPPLIER_NAMES = Object.freeze({smmfollows:'SMMFollows',smmlite:'SMMLite',daosmm:'DaoSMM',likeo:'Likeo'});
+const SUPPLIER_NAMES = Object.freeze({smmfollows:'SMMFollows',smmlite:'SMMLite',daosmm:'DaoSMM',likeo:'Likeo',alhitaan:'Alhitaan'});
 const supplierLabel = () => SUPPLIER_NAMES[provider.value] || 'Unknown supplier';
 let services = [];
 let currentPage = 0;

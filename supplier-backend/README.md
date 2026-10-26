@@ -1,6 +1,6 @@
 # SocialPanel NZ — isolated Render supplier preview
 
-This tiny Node.js 22+ service runs separately on Render Free, using **only** the `FRYMASTERCHEESE/socialpanel-nz` repository. It is a read-only, owner-authenticated viewer for SMMFollows, SMMLite, DaoSMM and Likeo reseller catalogue and balance APIs.
+This tiny Node.js 22+ service runs separately on Render Free, using **only** the `FRYMASTERCHEESE/socialpanel-nz` repository. It is a read-only, owner-authenticated viewer for SMMFollows, SMMLite, DaoSMM, Likeo and Alhitaan reseller catalogue and balance APIs.
 
 ## Live endpoints
 
@@ -56,7 +56,7 @@ SMMLite advertises API access, but its exact authenticated API endpoint has not 
 3. Save and deploy. At `/admin`, enter your existing owner token, select SMMLite, and check the supplier balance and service list. Missing SMMLite credentials cause only SMMLite to fail closed; SMMFollows remains connected.
 4. Confirm live API endpoint, currency, minimum quantities, quality and service terms before making any pricing decisions. Website sales and automated orders remain disabled.
 
-The backend supports exactly two suppliers and only `services`/`balance` actions. There is no supplier `add`, refills, cancellations, customer payments, public wholesale disclosure or order fulfilment action. SMM-panel catalogue rates for different services must not be assumed equivalent.
+The backend only supports `services`/`balance` actions for the configured suppliers. There is no supplier `add`, refills, cancellations, customer payments, public wholesale disclosure or order fulfilment action. SMM-panel catalogue rates for different services must not be assumed equivalent.
 
 ## DaoSMM supplier (third provider, read-only)
 
@@ -100,3 +100,28 @@ the supplier's order, refill, cancellation or payment API actions.
 The key is used only server-side; without it Likeo fails closed.
 No services are published, and no money is spent. Displayed supplier
 prices remain private and the website's public rates remain demonstration-only.
+
+## Alhitaan — fifth read-only supplier
+
+Alhitaan's official API docs at https://alhitaan.com/en/api (also linked from
+https://alhitaan.com/api) verify `POST https://alhitaan.com/api/v2`,
+with form-encoded `key` and `action=services` or `action=balance`.
+`add` creates real orders on the supplier and is intentionally NOT implemented
+here. No refunds, refills, cancellations, payments or orders are performed.
+
+1. Open Render → the existing `socialpanel-nz-supplier` service → **Environment**.
+2. Add the secret `ALHITAAN_API_KEY`, populated with the Alhitaan key from your
+   account. **Do not paste it in GitHub, this chat, or public `config.js`.**
+   Preserve the four existing supplier keys and `SOCIALPANEL_OWNER_TOKEN`.
+3. Save and deploy. Open the existing private `/admin` page, select
+   **Alhitaan**, enter your existing owner token, and tap **Check supplier balance**
+   to identify the account currency, then **Check supplier services**.
+4. The private catalogue remains read-only with supplier rates visible only to the
+   owner. No importing, publishing, deposits or customer orders are enabled.
+
+**Currency warning:** Alhitaan's public service catalogue at
+https://alhitaan.com/en/services shows prices in Egyptian pounds (EGP);
+do not assume its prices are USD or equivalent to Likeo's USD rates.
+An authenticated balance response is needed to verify *this account's* currency
+before comparing wholesale prices. A low catalogue rate is not proof of
+genuine engagement, reliable delivery or platform-policy compliance.

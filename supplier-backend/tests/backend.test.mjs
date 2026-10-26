@@ -344,3 +344,75 @@ test('Likeo fails closed without its key and denies unauthorized or unknown requ
   },{env,supplierFetch:async()=>{upstreamCalls++;return Response.json([])}});
   assert.equal(upstreamCalls,0);
 });
+
+test('Alhitaan service and balance requests are private, fixed-url and read-only',async()=>{
+  const demoKey='synthetic-alhitaan-key-test-only';
+  const received=[];
+  const ask=(base,action)=>fetch(base+'/api/preview',{
+    method:'POST',
+    headers:{'content-type':'application/json',authorization:'Bearer '+token},
+    body:JSON.stringify({action,provider:'alhitaan'}),
+  });
+  await withServer(async base=>{
+    const list=await ask(base,'services');
+    assert.equal(list.status,200);
+    const values=await list.json();
+    assert.equal(values.provider,'Alhitaan');
+    assert.equal(values.readOnly,true);
+    assert.deepEqual(values.services.map(s=>s.service),[772,1737]);
+    assert.equal(values.rejected,1);
+    const balance=await ask(base,'balance');
+    assert.equal(balance.status,200);
+    assert.deepEqual(await balance.json(),{
+      provider:'Alhitaan',readOnly:true,balance:'0.00',currency:'EGP'
+    });
+    const forbidden=await ask(base,'add');
+    assert.equal(forbidden.status,400);
+  },{
+    env:{...env,ALHITAAN_API_KEY:demoKey},
+    supplierFetch:async(url,params)=>{
+      const data=Object.fromEntries(new URLSearchParams(params.body));
+      received.push({url,method:params.method,redirect:params.redirect,form:data});
+      return Response.json(data.action==='services' ? [
+        {service:772,name:'Sample Facebook followers',category:'Facebook',rate:'14.89',min:'100',max:'100000',refill:true},
+        {service:772,name:'Duplicated ID',category:'Facebook',rate:'20',min:'100',max:'100000'},
+        {service:1737,name:'Another sample',category:'Facebook',rate:'12.50',min:'10',max:'300000',refill:false},
+      ]:{balance:'0.00',currency:'EGP'});
+    }
+  });
+  assert.deepEqual(received.map(x=>x.url),[
+    'https://alhitaan.com/api/v2','https://alhitaan.com/api/v2'
+  ]);
+  assert.deepEqual(received.map(x=>x.form),[
+    {key:demoKey,action:'services'},{key:demoKey,action:'balance'}
+  ]);
+  assert.ok(received.every(x=>x.method==='POST'&&x.redirect==='error'));
+});
+
+test('Alhitaan is fail-closed without key and never accepts unauthorized actions',async()=>{
+  let calls=0;
+  const ask=(base,provider,access=token,action='services')=>fetch(base+'/api/preview',{
+    method:'POST',
+    headers:{'content-type':'application/json',authorization:'Bearer '+access},
+    body:JSON.stringify({provider,action}),
+  });
+  await withServer(async base=>{
+    const absent=await ask(base,'alhitaan');
+    assert.equal(absent.status,503);
+    assert.match((await absent.json()).error,/Alhitaan key not configured/);
+    const denied=await ask(base,'alhitaan','definitely-wrong-owner-token-for-tests');
+    assert.equal(denied.status,401);
+    const other=await ask(base,'https://attacker.example');
+    assert.equal(other.status,400);
+    const anonymous=await fetch(base+'/api/preview',{
+      method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({provider:'alhitaan',action:'services'}),
+    });
+    assert.equal(anonymous.status,401);
+    const html=await (await fetch(base+'/admin')).text();
+    for(const name of ['smmfollows','smmlite','daosmm','likeo','alhitaan']){
+      assert.match(html,new RegExp('option value="'+name+'"'));
+    }
+  },{env,supplierFetch:async()=>{calls++;return Response.json([])}});
+  assert.equal(calls,0);
+});
