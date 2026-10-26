@@ -1,6 +1,6 @@
 # SocialPanel NZ — isolated Render supplier preview
 
-This tiny Node.js 22+ service runs separately on Render Free, using **only** the `FRYMASTERCHEESE/socialpanel-nz` repository. It is a read-only, owner-authenticated viewer for SMMFollows, SMMLite and DaoSMM reseller catalogue and balance APIs.
+This tiny Node.js 22+ service runs separately on Render Free, using **only** the `FRYMASTERCHEESE/socialpanel-nz` repository. It is a read-only, owner-authenticated viewer for SMMFollows, SMMLite, DaoSMM and Likeo reseller catalogue and balance APIs.
 
 ## Live endpoints
 
@@ -80,3 +80,23 @@ This integration permits only `services` and `balance`, not `add`, `status`,
 10,000 maximum per order in the provided screenshot (equivalent to $3.00/1,000 in its
 displayed currency). It is not a US$0.0044-per-1,000 offer. A 100,000 quantity would
 require multiple separate orders *if permitted*, and none has been placed.
+
+
+## Likeo API as fourth supplier — read-only
+
+The official Likeo documentation at https://likeo.net/api confirms
+`POST https://likeo.net/api/v2` with form-encoded `key` and
+`action=services` or `action=balance`. This app does NOT implement
+the supplier's order, refill, cancellation or payment API actions.
+
+1. Open **SocialPanel NZ supplier** service in Render → **Environment**.
+2. Add secret `LIKEO_API_KEY` with your private Likeo API key. Do not put the
+   key in GitHub, any public website, or this conversation. Keep the existing
+   supplier keys and `SOCIALPANEL_OWNER_TOKEN` untouched.
+3. Save and deploy the Render service. Open its private `/admin` page,
+   select **Likeo**, use the existing owner token, then **Check supplier balance**
+   (for currency) and **Check supplier services** (for actual service prices).
+
+The key is used only server-side; without it Likeo fails closed.
+No services are published, and no money is spent. Displayed supplier
+prices remain private and the website's public rates remain demonstration-only.

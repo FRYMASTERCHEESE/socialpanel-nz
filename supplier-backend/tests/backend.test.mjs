@@ -279,3 +279,68 @@ test('Admin selector explicitly includes all three suppliers',async()=>{
     assert.match(html,/option value="daosmm"/);
   });
 });
+
+
+test('Likeo API uses separate secret, fixed endpoint and read-only actions',async()=>{
+  const fakeKey='synthetic-likeo-api-key-for-test';
+  const calls=[];
+  const make=(base,action)=>fetch(base+'/api/preview',{
+    method:'POST',
+    headers:{'content-type':'application/json',authorization:'Bearer '+token},
+    body:JSON.stringify({provider:'likeo',action})
+  });
+  await withServer(async base=>{
+    const r=await make(base,'services');
+    assert.equal(r.status,200);
+    const result=await r.json();
+    assert.equal(result.provider,'Likeo');
+    assert.equal(result.readOnly,true);
+    assert.deepEqual(result.services.map(x=>x.service),[8801,8802]);
+    const b=await make(base,'balance');
+    assert.equal(b.status,200);
+    assert.deepEqual(await b.json(),{provider:'Likeo',readOnly:true,balance:'5.10',currency:'USD'});
+    const bad=await make(base,'add');
+    assert.equal(bad.status,400);
+  },{
+    env:{...env,LIKEO_API_KEY:fakeKey},
+    supplierFetch:async (url,options)=>{
+      const p=Object.fromEntries(new URLSearchParams(options.body).entries());
+      calls.push({url,options,p});
+      return Response.json(p.action==='services'?[
+        {service:8801,category:'YouTube',name:'Sample Service',rate:'0.20',min:'10',max:'1000',refill:false},
+        {service:8801,category:'YouTube',name:'Duplicate',rate:'0.30',min:'10',max:'1000',refill:false},
+        {service:8802,category:'YouTube',name:'Another Service',rate:'0.40',min:'10',max:'1000',refill:false}
+      ]:{balance:'5.10',currency:'USD'});
+    }
+  });
+  assert.deepEqual(calls.map(c=>c.url),['https://likeo.net/api/v2','https://likeo.net/api/v2']);
+  assert.deepEqual(calls.map(c=>c.p),[
+    {key:fakeKey,action:'services'},{key:fakeKey,action:'balance'}
+  ]);
+  assert.ok(calls.every(c=>c.options.method==='POST'&&c.options.redirect==='error'));
+});
+
+test('Likeo fails closed without its key and denies unauthorized or unknown requests',async()=>{
+  let upstreamCalls=0;
+  const send=(base,provider,access=token)=>fetch(base+'/api/preview',{
+    method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+access},
+    body:JSON.stringify({provider,action:'services'})
+  });
+  await withServer(async base=>{
+    const miss=await send(base,'likeo');
+    assert.equal(miss.status,503);
+    assert.match((await miss.json()).error,/Likeo key not configured/);
+    const bad=await send(base,'likeo','incorrect-owner-token-that-is-long-enough');
+    assert.equal(bad.status,401);
+    const unknown=await send(base,'https://evil.test');
+    assert.equal(unknown.status,400);
+    const noAuth=await fetch(base+'/api/preview',{method:'POST',
+      headers:{'content-type':'application/json'},body:'{"action":"balance","provider":"likeo"}'});
+    assert.equal(noAuth.status,401);
+    const html=await (await fetch(base+'/admin')).text();
+    for(const supplier of ['smmfollows','smmlite','daosmm','likeo']){
+      assert.match(html,new RegExp('option value="'+supplier+'"'));
+    }
+  },{env,supplierFetch:async()=>{upstreamCalls++;return Response.json([])}});
+  assert.equal(upstreamCalls,0);
+});

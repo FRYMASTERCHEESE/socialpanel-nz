@@ -16,6 +16,7 @@ const SUPPLIERS = Object.freeze({
   smmfollows: Object.freeze({name:'SMMFollows',endpoint:'https://smmfollows.com/api/v2',keyName:'SMMFOLLOWS_API_KEY'}),
   smmlite: Object.freeze({name:'SMMLite',endpoint:'https://smmlite.com/api/v2',keyName:'SMMLITE_API_KEY'}),
   daosmm: Object.freeze({name:'DaoSMM',endpoint:'https://daosmm.com/api/v2',keyName:'DAOSMM_API_KEY'}),
+  likeo: Object.freeze({name:'Likeo',endpoint:'https://likeo.net/api/v2',keyName:'LIKEO_API_KEY'}),
 });
 const MAX_BODY_BYTES = 1024;
 // Some SMM panels return thousands of records; a 2MB cap rejects valid catalogues.
