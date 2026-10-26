@@ -1,3 +1,4 @@
+import {filterSupplierServices, englishServiceHint} from './search.mjs';
 'use strict';
 // All credentials remain in the current page's input element. No localStorage/cookies.
 const el = (id) => document.getElementById(id);
@@ -12,12 +13,13 @@ const pageSize = 75;
 function status(text, kind = '') { message.textContent = text; message.className = 'message ' + kind; }
 function clearRows() {
   el('rows').replaceChildren();
-  for (const id of ['balance-result','table-region','search-label','service-controls','pager']) el(id).hidden = true;
+  for (const id of ['balance-result','table-region','search-label','search-help','service-controls','pager']) el(id).hidden = true;
 }
 function cell(row, text) { const td = document.createElement('td'); td.textContent = String(text ?? ''); row.appendChild(td); }
 function filteredServices() {
   const value = el('filter').value.toLocaleLowerCase().trim();
-  const items = services.filter(s => [s.service,s.name,s.category,s.type].some(t => String(t).toLocaleLowerCase().includes(value)));
+  const items = provider.value === 'alhitaan' ? filterSupplierServices(services,value) :
+    services.filter(s => [s.service,s.name,s.category,s.type].some(t => String(t).toLocaleLowerCase().includes(value)));
   const sort = el('sort-services').value;
   if (sort === 'cheapest') items.sort((a,b) => Number(a.rate)-Number(b.rate) || a.service-b.service);
   if (sort === 'expensive') items.sort((a,b) => Number(b.rate)-Number(a.rate) || a.service-b.service);
@@ -34,6 +36,10 @@ function renderRows() {
   for (const item of matches.slice(start, start + pageSize)) {
     const tr = document.createElement('tr');
     cell(tr, item.service); cell(tr, item.category); cell(tr, item.name); cell(tr, item.rate);
+    if(provider.value === 'alhitaan') {
+      const hint=englishServiceHint(item);
+      if(hint){const note=document.createElement('small');note.className='language-hint';note.textContent=hint+' (search label)';tr.children[2].appendChild(note);}
+    }
     cell(tr, item.min); cell(tr, item.max); cell(tr, item.refill ? 'Yes' : 'Not confirmed');
     frag.appendChild(tr);
   }
@@ -88,6 +94,7 @@ async function check(action) {
         (data.rejected ? `${data.rejected} rows excluded${reasons ? ' ('+reasons+')' : ''}. ` : '') +
         'Check terms and verify currency before using any rate. Nothing is published.';
       el('search-label').hidden = false; el('filter').value = ''; el('table-region').hidden = false;
+      el('search-help').hidden = selectedProvider !== 'alhitaan';
       el('service-controls').hidden = false; el('sort-services').value = 'supplier';
       currentPage = 0; renderRows();
       status('Retrieved a read-only supplier list. Nothing was ordered, charged, or published.', 'success');

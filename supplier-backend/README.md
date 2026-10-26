@@ -125,3 +125,16 @@ do not assume its prices are USD or equivalent to Likeo's USD rates.
 An authenticated balance response is needed to verify *this account's* currency
 before comparing wholesale prices. A low catalogue rate is not proof of
 genuine engagement, reliable delivery or platform-policy compliance.
+
+## Alhitaan English/Arabic catalogue search
+
+The owner-only viewer normalises Arabic listing text and adds common English
+search aliases **in the browser only**. Examples: `Facebook followers`,
+`YouTube subscribers`, `Facebook likes`, and Arabic search terms.
+This does not change Alhitaan service IDs, supplier-supplied descriptions,
+actual rates, currencies, minimum order sizes or availability. The small
+English labels are search hints, **not** complete translations or quality
+guarantees. The original Arabic listing remains visible for verification.
+Services stay private/read-only. Searches do not call the supplier again
+or place orders. Coverage is deliberately limited to common social-network
+terms; not all Arabic marketing descriptions can be fully translated.

@@ -7,7 +7,7 @@
   <meta name="robots" content="noindex, nofollow">
   <title>SocialPanel NZ | Private Supplier Viewer</title>
   <link rel="stylesheet" href="/admin/style.css">
-  <script src="/admin/app.js" defer></script>
+  <script src="/admin/app.js" type="module"></script>
 </head>
 <body>
   <header><span class="mark">S</span><div><strong>SocialPanel NZ</strong><small>Private supplier console</small></div><span class="chip">Read-only</span></header>
@@ -36,7 +36,8 @@
     <section id="results" class="panel" hidden>
       <div class="result-title"><div><span class="eyebrow">SUPPLIER RESPONSE</span><h2 id="result-heading">Results</h2></div><span class="chip muted">No orders</span></div>
       <p id="result-note" class="small"></p>
-      <label class="search-field" id="search-label" hidden>Filter services <input id="filter" placeholder="Search by category, name, ID…" autocomplete="off"></label>
+      <label class="search-field" id="search-label" hidden>Filter services <input id="filter" placeholder="Search in English or Arabic, name or ID…" autocomplete="off"></label>
+      <p class="small search-help" id="search-help" hidden>Alhitaan uses Arabic service names. You can now type <strong>Facebook followers</strong>, <strong>YouTube subscribers</strong>, or Arabic terms. Original service names and supplier prices are unchanged.</p>
       <div class="service-controls" id="service-controls" hidden>
         <label for="sort-services">Sort services
           <select id="sort-services">

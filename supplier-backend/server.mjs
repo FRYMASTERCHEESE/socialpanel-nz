@@ -29,6 +29,7 @@ const ACCESS_TOKEN_MIN_LENGTH = 24;
 const files = new Map([
   ['/admin', ['admin.html', 'text/html; charset=utf-8']],
   ['/admin/app.js', ['admin.js', 'text/javascript; charset=utf-8']],
+  ['/admin/search.mjs', ['search.mjs', 'text/javascript; charset=utf-8']],
   ['/admin/style.css', ['admin.css', 'text/css; charset=utf-8']],
 ]);
 

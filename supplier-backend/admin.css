@@ -11,3 +11,7 @@
 
 .supplier-picker{display:flex;flex-direction:column;gap:8px;font-weight:650;margin:15px 0 20px;color:#475a80}
 .supplier-picker select{width:100%;max-width:550px;background:#f8fbff;padding:13px;border:1px solid #c7d6ed;border-radius:12px;color:#273b5d;font:inherit}
+
+/* Alhitaan bilingual search hints stay informational; supplier rate remains unchanged. */
+.language-hint{display:block;margin-top:6px;font-size:11px;font-weight:600;color:#506da1}
+.search-help{margin:-8px 0 20px;color:#506184;line-height:1.65}
