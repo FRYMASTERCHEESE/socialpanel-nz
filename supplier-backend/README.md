@@ -1,6 +1,6 @@
 # SocialPanel NZ — isolated Render supplier preview
 
-This tiny Node.js 22+ service runs separately on Render Free, using **only** the `FRYMASTERCHEESE/socialpanel-nz` repository. It is a read-only, owner-authenticated viewer for SMMFollows, SMMLite, DaoSMM, Likeo and Alhitaan reseller catalogue and balance APIs.
+This tiny Node.js 22+ service runs separately on Render Free, using **only** the `FRYMASTERCHEESE/socialpanel-nz` repository. It is a read-only, owner-authenticated viewer for SMMFollows, SMMLite, DaoSMM, Likeo, Alhitaan and SMMASIA reseller catalogue and balance APIs.
 
 ## Live endpoints
 
@@ -138,3 +138,15 @@ guarantees. The original Arabic listing remains visible for verification.
 Services stay private/read-only. Searches do not call the supplier again
 or place orders. Coverage is deliberately limited to common social-network
 terms; not all Arabic marketing descriptions can be fully translated.
+
+
+## SMMASIA private read-only API
+
+The private supplier viewer supports SMMASIA at `https://smmasia.org/api/v2`.
+It reads only `services` and `balance`, never places supplier orders or accepts payments.
+Its private key belongs in the Render environment variable `SMMASIA_API_KEY`, **not**
+in GitHub or the public website. Preserve all other supplier keys and the existing
+`SOCIALPANEL_OWNER_TOKEN`. In the owner-only `/admin` page, select **SMMASIA**
+and check balance to confirm currency, then services to inspect rates. No supplier
+price is imported into the public storefront. Price and quality claims remain
+unverified until inspected.
